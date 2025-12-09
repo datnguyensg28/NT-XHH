@@ -12,7 +12,7 @@ import zipfile
 # CONFIG
 # ============================
 st.set_page_config(page_title="BBNT - Xã Hội Hóa V3", layout="wide")
-st.title("BBNT - Xã Hội Hóa (Web)")
+st.title("BBNT - Xã Hội Hóa (Web V3)")
 
 # ============================
 # LOAD GOOGLE SHEETS
@@ -219,6 +219,8 @@ for i, label in enumerate(labels, start=1):
 # ============================
 # CREATE REPORT (NEW & FIXED)
 # ============================
+# CREATE REPORT (NEW & FIXED)
+# ============================
 if st.button("📄 Tạo & Tải biên bản"):
 
     try:
@@ -292,6 +294,7 @@ if st.button("📄 Tạo & Tải biên bản"):
         import traceback
         st.error(f"Lỗi tạo biên bản: {e}")
         st.text(traceback.format_exc())
+
 
 
 
