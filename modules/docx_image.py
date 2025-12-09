@@ -67,9 +67,18 @@ def insert_image_into_docx_bytes(docx_bytes: bytes, placeholder: str, img_bytes:
 
     for p in doc.paragraphs:
         if placeholder in p.text:
-            p.clear()
+
+            # XÓA sạch mọi run chứa text
+            for r in list(p.runs):
+                try:
+                    r._element.getparent().remove(r._element)
+                except:
+                    pass
+
+            # THÊM ẢNH
             run = p.add_run()
             run.add_picture(io.BytesIO(img_bytes), width=Cm(width_cm))
+
 
     # --- 4) Lưu kết quả ---
     out = io.BytesIO()

@@ -45,29 +45,26 @@ def bytes_from_pil(img: Image.Image):
     img.save(buf, format="JPEG", quality=85)
     return buf.getvalue()
 
+from modules.docx_image import _merge_xml   # thêm import này ở đầu app.py
+
 def extract_placeholders_from_docx(docx_bytes):
     """
-    Tìm toàn bộ placeholder dạng $xxx hoặc ${xxx}, bao gồm cả trường hợp bị tách XML.
+    Tìm placeholder dạng $xxx, ${xxx}, kể cả khi Word split XML.
     """
     bio = io.BytesIO(docx_bytes)
 
     with zipfile.ZipFile(bio, "r") as z:
         xml = z.read("word/document.xml").decode("utf-8")
 
-    # Ghép các đoạn XML bị tách
-    xml = xml.replace("</w:t><w:t>", "")
+    # Dùng merge XML chuẩn từ docx_image.py
+    xml = _merge_xml(xml)
 
     holders = set()
-
-    # dạng $ten
-    for m in re.findall(r"\$([A-Za-z0-9_]+)", xml):
-        holders.add(m)
-
-    # dạng ${ten}
-    for m in re.findall(r"\$\{([A-Za-z0-9_]+)\}", xml):
-        holders.add(m)
+    holders.update(re.findall(r"\$([A-Za-z0-9_]+)", xml))
+    holders.update(re.findall(r"\$\{([A-Za-z0-9_]+)\}", xml))
 
     return holders
+
 
 
 # ============================
@@ -235,7 +232,9 @@ if st.button("📄 Tạo & Tải biên bản"):
 
             # 3) Replace text placeholders
             for holder in holders:
-
+                # ❗ BỎ QUA placeholder ẢNH để không bị xóa trước khi chèn ảnh
+                if holder.lower().startswith("anh"):
+                    continue
                 patterns = [
                     f"${holder}",
                     f"${{{holder}}}",
@@ -268,17 +267,26 @@ if st.button("📄 Tạo & Tải biên bản"):
             # 4) Insert ảnh 1–8
             for i in range(1, 9):
                 key = f"img{i}"
-                placeholder = f"${{Anh{i}}}"
 
                 if key in st.session_state.images_bytes:
                     img_bytes = st.session_state.images_bytes[key]
 
-                    docx_bytes = docx_image.insert_image_into_docx_bytes(
-                        docx_bytes,
-                        placeholder,
-                        img_bytes,
-                        width_cm=12       # ảnh chuẩn lớn – bạn có thể chỉnh
-                    )
+                    # hỗ trợ mọi dạng placeholder ảnh
+                    ph_list = [
+                        f"${{Anh{i}}}",
+                        f"$Anh{i}",
+                        f"${{Anh{i}}};",
+                        f"$Anh{i};",
+                    ]
+
+                    for ph in ph_list:
+                        docx_bytes = docx_image.insert_image_into_docx_bytes(
+                            docx_bytes,
+                            ph,
+                            img_bytes,
+                            width_cm=12
+                        )
+
 
             # 5) Xuất file
             title = f"BBNT_{ma_tram}_{thang}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
