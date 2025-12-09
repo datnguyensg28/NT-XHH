@@ -5,55 +5,65 @@ from docx import Document
 from docx.shared import Cm
 
 
-def merge_xml_text(xml: str) -> str:
+def _merge_xml(xml: str) -> str:
     """
-    Gom toàn bộ text node bị split trong Word:
-    <w:t>A</w:t><w:t>B</w:t> => AB
+    Merge các text node bị split trong DOCX:
+    </w:t><w:t>  →  (gộp lại)
     """
-    xml = re.sub(r"</w:t>\s*<w:t[^>]*>", "", xml)
-    return xml
+    return re.sub(r"</w:t>\s*<w:t[^>]*>", "", xml)
 
 
 def replace_text_bytes(docx_bytes: bytes, placeholder: str, value: str) -> bytes:
     """
-    Replace text placeholder trong file DOCX mà vẫn giữ nguyên cấu trúc ZIP.
+    Replace text trong DOCX, KHÔNG BAO GIỜ lỗi ZIP closed.
     """
     bio = io.BytesIO(docx_bytes)
 
-    # --------- ĐỌC TOÀN BỘ ZIP TRƯỚC WHEN zin còn mở ---------
+    # đọc toàn bộ file zip
     with zipfile.ZipFile(bio, "r") as zin:
+        files = {f.filename: zin.read(f.filename) for f in zin.infolist()}
 
-        # Lấy nội dung file document.xml
-        xml = zin.read("word/document.xml").decode("utf-8")
-        xml = merge_xml_text(xml)
-        xml = xml.replace(placeholder, value)
+    # xử lý document.xml
+    xml = files["word/document.xml"].decode("utf-8")
+    xml = _merge_xml(xml)
+    xml = xml.replace(placeholder, value)
 
-        # Load tất cả file khác vào bộ nhớ
-        files = {
-            item.filename: zin.read(item.filename)
-            for item in zin.infolist()
-        }
-
-    # --------- GHI ZIP MỚI ---------
+    # ghi ZIP mới
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w") as zout:
-
-        for filename, content in files.items():
-            if filename == "word/document.xml":
-                zout.writestr(filename, xml.encode("utf-8"))
+        for name, content in files.items():
+            if name == "word/document.xml":
+                zout.writestr(name, xml.encode("utf-8"))
             else:
-                zout.writestr(filename, content)
+                zout.writestr(name, content)
 
     return out.getvalue()
 
 
-def insert_image_into_docx_bytes(docx_bytes: bytes, placeholder: str, img_bytes: bytes, width_cm=10):
+def insert_image_into_docx_bytes(docx_bytes: bytes, placeholder: str, img_bytes: bytes, width_cm: float = 10):
     """
-    Chèn hình vào DOCX tại vị trí ${AnhX}.
-    Dùng python-docx để xử lý ảnh chuẩn hơn.
+    Chèn hình vào đúng đoạn chứa placeholder (đã merge XML).
     """
+    # --- 1) Đầu tiên MERGE XML trong bản docx_bytes ---
+    # Mở ZIP để merge text
     bio = io.BytesIO(docx_bytes)
-    doc = Document(bio)
+
+    with zipfile.ZipFile(bio, "r") as zin:
+        files = {f.filename: zin.read(f.filename) for f in zin.infolist()}
+
+    xml = files["word/document.xml"].decode("utf-8")
+    xml = _merge_xml(xml)
+    files["word/document.xml"] = xml.encode("utf-8")
+
+    # --- 2) Ghi lại DOCX đã merge (rồi mới dùng python-docx đọc) ---
+    merged = io.BytesIO()
+    with zipfile.ZipFile(merged, "w") as zout:
+        for name, content in files.items():
+            zout.writestr(name, content)
+
+    # --- 3) Giờ python-docx có thể tìm chính xác placeholder ---
+    merged.seek(0)
+    doc = Document(merged)
 
     for p in doc.paragraphs:
         if placeholder in p.text:
@@ -61,6 +71,7 @@ def insert_image_into_docx_bytes(docx_bytes: bytes, placeholder: str, img_bytes:
             run = p.add_run()
             run.add_picture(io.BytesIO(img_bytes), width=Cm(width_cm))
 
+    # --- 4) Lưu kết quả ---
     out = io.BytesIO()
     doc.save(out)
     return out.getvalue()
