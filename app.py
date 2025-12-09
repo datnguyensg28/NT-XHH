@@ -1,8 +1,11 @@
-# app.py
+# ============================================
+# app.py – Bản stable, đã FIX placeholder 100%
+# ============================================
+
 import streamlit as st
 from modules import gsheets, auth, docx_image
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, date
 from PIL import Image
 import io
 import re
@@ -12,7 +15,7 @@ import zipfile
 # CONFIG
 # ============================
 st.set_page_config(page_title="BBNT - Xã Hội Hóa V3", layout="wide")
-st.title("BBNT - Xã Hội Hóa (Web V3)")
+st.title("BBNT - Xã Hội Hóa (Web V3 - stable)")
 
 # ============================
 # LOAD GOOGLE SHEETS
@@ -46,28 +49,15 @@ def bytes_from_pil(img: Image.Image):
     return buf.getvalue()
 
 def extract_placeholders_from_docx(docx_bytes):
-    """
-    Tìm toàn bộ placeholder dạng $xxx hoặc ${xxx}, bao gồm cả trường hợp bị tách XML.
-    Trả về set tên placeholder (không kèm dấu $ hoặc {}).
-    """
     bio = io.BytesIO(docx_bytes)
-
     with zipfile.ZipFile(bio, "r") as z:
         xml = z.read("word/document.xml").decode("utf-8")
 
-    # Ghép các đoạn XML bị tách
     xml = docx_image._merge_xml(xml)
 
     holders = set()
-
-    # dạng $ten
-    for m in re.findall(r"\$([A-Za-z0-9_]+)", xml):
-        holders.add(m)
-
-    # dạng ${ten}
-    for m in re.findall(r"\$\{([A-Za-z0-9_]+)\}", xml):
-        holders.add(m)
-
+    holders.update(re.findall(r"\$([A-Za-z0-9_]+)", xml))
+    holders.update(re.findall(r"\$\{([A-Za-z0-9_]+)\}", xml))
     return holders
 
 # ============================
@@ -101,7 +91,6 @@ if not st.session_state.logged_in:
         idx = ma_tram_list.index(ma_tram)
         stored_pw = str(df_csdl["Password"].iloc[idx])
 
-        # Hỗ trợ SHA-256 hoặc plain
         ok = (
             auth.verify_password(password, stored_pw)
             if len(stored_pw) == 64
@@ -112,7 +101,6 @@ if not st.session_state.logged_in:
             st.error("Sai mật khẩu.")
             st.stop()
 
-        # login OK
         st.session_state.logged_in = True
         st.session_state.ma_tram = ma_tram
         st.session_state.thang = thang
@@ -162,7 +150,7 @@ st.write(pd.Series(user_data))
 st.markdown("---")
 
 # ============================
-# UPLOAD + ROTATE
+# Upload images
 # ============================
 st.subheader("📸 Upload & Xoay ảnh (1–8)")
 
@@ -211,7 +199,6 @@ for i, label in enumerate(labels, start=1):
 
     st.markdown("---")
 
-
 # ============================
 # CREATE REPORT
 # ============================
@@ -220,70 +207,59 @@ if st.button("📄 Tạo & Tải biên bản"):
     try:
         with st.spinner("Đang tạo biên bản..."):
 
-            # 1) Load template
             with open("template.docx", "rb") as f:
                 docx_bytes = f.read()
 
-            # 2) Load placeholders (đã fix split-XML)
             holders = extract_placeholders_from_docx(docx_bytes)
 
-            # 3) Chuẩn bị map các placeholder -> value
-            #    Nếu user_data không có giá trị cho holder, cho phép user nhập thủ công trước khi replace
+            # Tạo map value cho text placeholders
             dynamic_inputs = {}
             missing = []
+
             for h in holders:
-                # skip image placeholders (anh1..anh8) from text replacement
                 if h.lower().startswith("anh"):
                     continue
-                normalized = h.lower()
+
+                normalized = h.lower().replace("_", "")
                 found = False
                 for k, v in user_data.items():
-                    if k.lower().replace("_", "") == normalized.replace("_", ""):
-                        # lấy trực tiếp từ user_data
+                    if k.lower().replace("_", "") == normalized:
                         val = v
-                        # format ngày nếu cần
                         if isinstance(val, (pd.Timestamp, datetime)):
                             val = pd.to_datetime(val).strftime("%d/%m/%Y")
                         dynamic_inputs[h] = "" if val is None else str(val)
                         found = True
                         break
+
                 if not found:
                     missing.append(h)
 
-            # show inputs cho các placeholder thiếu
             if missing:
-                st.warning("Có một số placeholder trong mẫu không có dữ liệu tự động. Vui lòng nhập giá trị thay thế:")
+                st.warning("Có placeholder thiếu dữ liệu:")
                 cols = st.columns(2)
                 for idx, h in enumerate(missing):
                     col = cols[idx % 2]
-                    # nếu là ngày (từ tên chứa 'ngay' or 'date'), hiển thị date_input để tiện
-                    if "ngay" in h.lower() or "date" in h.lower():
-                        dt = col.date_input(f"{h} (chọn ngày)", key=f"inp_{h}", value=datetime.now().date())
-                        # convert date -> dd/mm/YYYY
+
+                    if "ngay" in h.lower():
+                        dt = col.date_input(f"{h}", key=f"inp_{h}", value=date.today())
                         dynamic_inputs[h] = dt.strftime("%d/%m/%Y")
                     else:
                         dynamic_inputs[h] = col.text_input(f"{h}", key=f"inp_{h}")
 
-                # Sau khi user nhập, giữ ở màn hình chờ để họ bấm lại tạo
-                st.info("Đã nhận các giá trị nhập tay. Bấm lại 'Tạo & Tải biên bản' để tiếp tục.")
+                st.info("Nhập xong → BẤM LẠI nút 'Tạo & Tải biên bản'.")
                 st.stop()
 
-            # 4) Replace text placeholders
             # ============================
-            # 4) Replace text placeholders
+            # Replace text
             # ============================
-
             for holder in holders:
 
-                # skip ảnh, xử lý phần text trước
                 if holder.lower().startswith("anh"):
                     continue
 
-                # --- lấy value (tự động hoặc user nhập) ---
                 value_str = dynamic_inputs.get(holder, "")
 
                 if value_str == "":
-                    # fallback nếu trùng tên cột Google Sheets
                     val = ""
                     for k, v in user_data.items():
                         if k.lower().replace("_", "") == holder.lower().replace("_", ""):
@@ -293,7 +269,6 @@ if st.button("📄 Tạo & Tải biên bản"):
                         val = pd.to_datetime(val).strftime("%d/%m/%Y")
                     value_str = "" if val is None else str(val)
 
-                # --- tất cả biến thể placeholder cần replace ---
                 placeholder_variants = [
                     f"${holder}",
                     f"${holder} ",
@@ -305,18 +280,17 @@ if st.button("📄 Tạo & Tải biên bản"):
                     f"${{{holder}}}; ",
                 ]
 
-                # --- replace vào file docx ---
                 for ph in placeholder_variants:
                     docx_bytes = docx_image.replace_text_bytes(docx_bytes, ph, value_str)
 
-
-            # 5) Insert ảnh 1–8
+            # ============================
+            # INSERT IMAGES
+            # ============================
             for i in range(1, 9):
                 key = f"img{i}"
                 if key in st.session_state.images_bytes:
                     img_bytes = st.session_state.images_bytes[key]
 
-                    # hỗ trợ mọi dạng placeholder ảnh (dạng ${Anh1}, $Anh1, và có thể có ;)
                     ph_list = [
                         f"${{Anh{i}}}",
                         f"$Anh{i}",
@@ -324,7 +298,6 @@ if st.button("📄 Tạo & Tải biên bản"):
                         f"$Anh{i};",
                     ]
 
-                    # IMPORTANT: gọi insert_image cho từng dạng placeholder
                     for ph in ph_list:
                         docx_bytes = docx_image.insert_image_into_docx_bytes(
                             docx_bytes,
@@ -333,7 +306,9 @@ if st.button("📄 Tạo & Tải biên bản"):
                             width_cm=12
                         )
 
-            # 6) Xuất file
+            # ============================
+            # EXPORT FILE
+            # ============================
             title = f"BBNT_{ma_tram}_{thang}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
             st.download_button(
