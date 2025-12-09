@@ -18,18 +18,24 @@ def save_docx(doc: Document) -> bytes:
 
 
 def _replace_in_paragraph(paragraph, placeholder, value):
-    """Thay placeholder trong 1 paragraph, bất chấp split run."""
-    full = ''.join(run.text for run in paragraph.runs)
+    """
+    Replace text nhưng GIỮ NGUYÊN định dạng run.
+    Không xóa run – chỉ chỉnh nội dung trong run.
+    """
+    # full text
+    full = "".join(r.text for r in paragraph.runs)
     if placeholder not in full:
         return False
 
-    new_text = full.replace(placeholder, value)
+    new_full = full.replace(placeholder, value)
 
-    # xoá toàn bộ run
-    for r in list(paragraph.runs):
-        r.clear()
+    # Giữ nguyên style → chỉ update text
+    idx = 0
+    for r in paragraph.runs:
+        run_len = len(r.text)
+        r.text = new_full[idx: idx + run_len]
+        idx += run_len
 
-    paragraph.add_run(new_text)
     return True
 
 
