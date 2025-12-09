@@ -8,8 +8,8 @@ import io
 import re
 import zipfile
 
-st.set_page_config(page_title="BBNT - Xã Hội Hóa V3", layout="wide")
-st.title("BBNT - Xã Hội Hóa (Web V3)")
+st.set_page_config(page_title="BBNT - Xã Hội Hóa V4", layout="wide")
+st.title("BBNT - Xã Hội Hóa (Web V4)")
 
 # ---------- load data ----------
 @st.cache_data(ttl=300)
@@ -40,8 +40,8 @@ from modules.docx_image import _merge_xml  # vẫn dùng
 
 def extract_placeholders_from_docx_bytes(docx_bytes: bytes):
     """
-    Trả về set placeholder dạng 'ngaybatdau', 'Anh1', 'tienthangtruocthue', ...
-    tìm cả $xxx và ${xxx}
+    Trả về set placeholder dạng 'ngaybatdau', 'anh1', 'tienthangtruocthue', ...
+    tìm cả $xxx và ${xxx} và trả về tên không đổi (giữ nguyên case có trong file).
     """
     bio = io.BytesIO(docx_bytes)
     with zipfile.ZipFile(bio, "r") as z:
@@ -182,11 +182,11 @@ if st.button("📄 Tạo & Tải biên bản"):
             placeholder_value_map = {}
 
             for holder in holders:
-                # skip image placeholders here
+                # skip image placeholders here (both 'anh' & 'Anh' forms)
                 if holder.lower().startswith("anh"):
                     continue
 
-                # prepare patterns that may appear in docx
+                # prepare patterns that may appear in docx (match both ${x} and $x)
                 patterns = [
                     f"${holder}",
                     f"${{{holder}}}",
@@ -232,9 +232,14 @@ if st.button("📄 Tạo & Tải biên bản"):
             # 2) INSERT IMAGES
             inserted_images = []
             not_inserted_images = []
+            # support lowercase 'anh1' placeholders from template: we attempt variants in both lower and Title forms
             for i in range(1,9):
                 key = f"img{i}"
-                ph_variants = [f"${{Anh{i}}}", f"$Anh{i}", f"${{Anh{i}}};", f"$Anh{i};"]
+                # try variants: lowercase, Title-case, with/without braces and trailing semicolon
+                ph_variants = [
+                    f"${{anh{i}}}", f"$anh{i}", f"${{anh{i}}};", f"$anh{i};",
+                    f"${{Anh{i}}}", f"$Anh{i}", f"${{Anh{i}}};", f"$Anh{i};"
+                ]
                 if key in st.session_state.images_bytes:
                     img_bytes = st.session_state.images_bytes[key]
                     inserted = False
@@ -249,7 +254,7 @@ if st.button("📄 Tạo & Tải biên bản"):
 
             st.write("Inserted images placeholders:", inserted_images)
             if not_inserted_images:
-                st.warning(f"Không chèn được ảnh cho: {not_inserted_images}. Kiểm tra placeholder trong template (ví dụ ${'{Anh1}'} hoặc $Anh1).")
+                st.warning(f"Không chèn được ảnh cho: {not_inserted_images}. Kiểm tra placeholder trong template (ví dụ ${'{anh1}'} hoặc $anh1).")
 
             # 3) final download
             title = f"BBNT_{ma_tram}_{thang}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
