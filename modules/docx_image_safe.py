@@ -3,92 +3,85 @@ import io
 from docx import Document
 from docx.shared import Cm
 
-# ============================
-# Load & Save DOCX
-# ============================
 
 def load_docx_bytes(docx_bytes: bytes):
-    """Load docx từ bytes."""
+    """Load DOCX từ bytes."""
     bio = io.BytesIO(docx_bytes)
     return Document(bio)
 
+
 def save_docx(doc: Document) -> bytes:
-    """Save docx về bytes."""
+    """Save DOCX về bytes."""
     bio = io.BytesIO()
     doc.save(bio)
     return bio.getvalue()
 
 
-# ============================
-# Replace TEXT (Safe Mode)
-# ============================
-
-def replace_text_in_paragraph(paragraph, placeholder, value):
-    """Replace placeholder trong 1 paragraph bất chấp Word split runs."""
+def _replace_in_paragraph(paragraph, placeholder, value):
+    """Thay placeholder trong 1 paragraph, bất chấp split run."""
     full = ''.join(run.text for run in paragraph.runs)
-
     if placeholder not in full:
         return False
 
-    # replace toàn bộ
     new_text = full.replace(placeholder, value)
 
-    # xoá run cũ
-    for run in list(paragraph.runs):
-        run.clear()
+    # xoá toàn bộ run
+    for r in list(paragraph.runs):
+        r.clear()
 
     paragraph.add_run(new_text)
     return True
 
 
-def replace_text_in_doc(doc, placeholder, value):
-    """Replace toàn doc (paragraph + table)."""
+def replace_text(doc: Document, placeholder: str, value: str):
+    """Replace text trong toàn bộ DOCX (paragraph + bảng)."""
     replaced = False
 
-    # paragraphs
+    # paragraph
     for p in doc.paragraphs:
-        if replace_text_in_paragraph(p, placeholder, value):
+        if _replace_in_paragraph(p, placeholder, value):
             replaced = True
 
-    # tables
+    # trong table
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
                 for p in cell.paragraphs:
-                    if replace_text_in_paragraph(p, placeholder, value):
+                    if _replace_in_paragraph(p, placeholder, value):
                         replaced = True
 
     return replaced
 
 
-# ============================
-# Insert IMAGE (Safe Mode)
-# ============================
+def _insert_img_to_paragraph(paragraph, placeholder, img_bytes, width_cm):
+    full = ''.join(run.text for run in paragraph.runs)
+    if placeholder not in full:
+        return False
 
-def insert_image(doc, placeholder, img_bytes, width_cm=10):
-    """Chèn hình tại vị trí placeholder."""
-    found = False
+    # xoá run
+    for r in list(paragraph.runs):
+        r.clear()
 
-    def process_para(p):
-        nonlocal found
-        full = ''.join(run.text for run in p.runs)
-        if placeholder in full:
-            for run in list(p.runs):
-                run.clear()
+    run = paragraph.add_run()
+    run.add_picture(io.BytesIO(img_bytes), width=Cm(width_cm))
+    return True
 
-            run = p.add_run()
-            run.add_picture(io.BytesIO(img_bytes), width=Cm(width_cm))
-            found = True
 
-    # paragraphs
+def insert_image(doc: Document, placeholder: str, img_bytes: bytes, width_cm=12):
+    """Chèn ảnh vào vị trí placeholder."""
+    inserted = False
+
+    # paragraph
     for p in doc.paragraphs:
-        process_para(p)
+        if _insert_img_to_paragraph(p, placeholder, img_bytes, width_cm):
+            inserted = True
 
-    # tables
+    # trong table
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
                 for p in cell.paragraphs:
-                    process_para(p)
+                    if _insert_img_to_paragraph(p, placeholder, img_bytes, width_cm):
+                        inserted = True
 
-    return found
+    return inserted
