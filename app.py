@@ -1,3 +1,4 @@
+#Module app.py
 import streamlit as st
 from modules import gsheets, auth, docx_image
 import pandas as pd
@@ -215,75 +216,70 @@ for i, label in enumerate(labels, start=1):
 
 # ============================
 # ============================
-# CREATE REPORT (LOCAL template.docx)
+# ============================
+# CREATE REPORT (NEW & FIXED)
 # ============================
 if st.button("📄 Tạo & Tải biên bản"):
 
     try:
         with st.spinner("Đang tạo biên bản..."):
 
-            # 1) Load template.docx
+            # 1) Load template
             with open("template.docx", "rb") as f:
                 docx_bytes = f.read()
 
-            # 2) Scan placeholder trong template
+            # 2) Load placeholders (đã fix split-XML)
             holders = extract_placeholders_from_docx(docx_bytes)
 
-            # 3) Replace ALL placeholders
+            # 3) Replace text placeholders
             for holder in holders:
-                # các dạng placeholder cần thay: $Name và ${Name}
-                patterns = [f"${holder}", f"${{{holder}}}"]
 
-                # chuẩn hoá tên để so sánh (ví dụ: tu_ngay -> tungay)
+                patterns = [
+                    f"${holder}",
+                    f"${{{holder}}}",
+                    f"${holder};",
+                    f"${{{holder}}};"
+                ]
+
                 normalized = holder.lower().replace("_", "")
-
-                # khởi tạo value rỗng
                 value = ""
 
-                # special-case cho tu_ngay / den_ngay: nếu user_data chứa key chính xác thì lấy
-                if normalized == "denngay" and "den_ngay" in user_data:
-                    value = user_data.get("den_ngay", "")
-                elif normalized == "tungay" and "tu_ngay" in user_data:
-                    value = user_data.get("tu_ngay", "")
-                else:
-                    # tìm key phù hợp trong user_data (so sánh sau khi chuẩn hóa)
-                    for k, v in user_data.items():
-                        if k.lower().replace("_", "") == normalized:
-                            value = v
-                            break
+                # Map trực tiếp theo tên cột
+                for k, v in user_data.items():
+                    if k.lower().replace("_", "") == normalized:
+                        value = v
+                        break
 
-                # nếu value là datetime -> format thành chuỗi dễ đọc
-                try:
-                    if isinstance(value, (pd.Timestamp, datetime)):
-                        # pd.Timestamp cũng được format
-                        value = pd.to_datetime(value).strftime("%Y-%m-%d")
-                except Exception:
-                    pass
+                # Format ngày tháng
+                if isinstance(value, (pd.Timestamp, datetime)):
+                    value = pd.to_datetime(value).strftime("%d/%m/%Y")
 
-                # đảm bảo là str trước khi ghi vào docx
                 value_str = "" if value is None else str(value)
 
-                # thực hiện replace cho mỗi dạng pattern
                 for ph in patterns:
-                    docx_bytes = docx_image.replace_text_bytes(docx_bytes, ph, value_str)
+                    docx_bytes = docx_image.replace_text_bytes(
+                        docx_bytes,
+                        ph,
+                        value_str
+                    )
 
-            # 4) Insert ảnh ${Anh1}…${Anh8}
+            # 4) Insert ảnh 1–8
             for i in range(1, 9):
                 key = f"img{i}"
                 placeholder = f"${{Anh{i}}}"
 
                 if key in st.session_state.images_bytes:
+                    img_bytes = st.session_state.images_bytes[key]
+
                     docx_bytes = docx_image.insert_image_into_docx_bytes(
                         docx_bytes,
                         placeholder,
-                        st.session_state.images_bytes[key]
+                        img_bytes,
+                        width_cm=12       # ảnh chuẩn lớn – bạn có thể chỉnh
                     )
 
             # 5) Xuất file
-            title = (
-                f"BBNT_{ma_tram}_{thang}_"
-                f"{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            )
+            title = f"BBNT_{ma_tram}_{thang}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
             st.download_button(
                 "📥 Tải DOCX",
@@ -293,5 +289,9 @@ if st.button("📄 Tạo & Tải biên bản"):
             )
 
     except Exception as e:
+        import traceback
         st.error(f"Lỗi tạo biên bản: {e}")
+        st.text(traceback.format_exc())
+
+
 
