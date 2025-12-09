@@ -161,106 +161,104 @@ for i, label in enumerate(labels, start=1):
     st.markdown("---")
 
 # ---------- CREATE REPORT ----------
+# ---------- CREATE REPORT ----------
+from modules import docx_image_safe as ds
+
+def convert_date_value(value):
+    """Tự nhận dạng:
+    - DD/MM/YYYY
+    - YYYY-MM-DD
+    - Excel serial number
+    """
+    import pandas as pd
+
+    if value is None:
+        return ""
+
+    # Excel serial numbers
+    if isinstance(value, (int, float)) and value > 25000:
+        try:
+            base = pd.to_datetime("1899-12-30")
+            dt = base + pd.to_timedelta(int(value), "D")
+            return dt.strftime("%d/%m/%Y")
+        except:
+            pass
+
+    try:
+        dt = pd.to_datetime(value, dayfirst=True, errors="coerce")
+        if not pd.isna(dt):
+            return dt.strftime("%d/%m/%Y")
+    except:
+        pass
+
+    return str(value)
+
+
 if st.button("📄 Tạo & Tải biên bản"):
     try:
         with st.spinner("Đang tạo biên bản..."):
-            # load template
+
+            # Load template docx
             with open("template.docx", "rb") as f:
                 docx_bytes = f.read()
 
-            # list placeholders in template (debug)
-            holders = extract_placeholders_from_docx_bytes(docx_bytes)
-            st.info(f"Placeholders found in template: {sorted(list(holders))}")
+            doc = ds.load_docx_bytes(docx_bytes)
 
-            # 1) REPLACE TEXT placeholders
-            # chuẩn hoá user_data keys để map dễ hơn
+            # Chuẩn hoá dữ liệu user_data
             normalized_map = {}
+
             for k, v in user_data.items():
-                normalized_map[k.lower().replace("_","")] = v
+                key = k.lower().replace("_","")  # ví dụ ngaybatdau
+                normalized_map[key] = convert_date_value(v)
 
-            replaced_placeholders = set()
-            placeholder_value_map = {}
+            # Danh sách placeholders trong template:
+            holders = [
+                # text placeholders
+                "ngaybatdau", "ngayketthuc", "ngay_ky",
+                "Chu_ha_tang", "Chuc_vu",
+                "Danh_gia_DH","Danh_gia_PM","Danh_gia_cot",
+                "Dia_chi","Ky_thanh_toan",
+                "Loai_cot","Loai_tram",
+                "Ma_HD","Ten_GD_VT","Ten_don_vi_XHH",
+                "ma_tram","tien_bang_chu",
+                "tienthangtruocthue","tienthueky",
+                "tientruocthueky","tongtienky"
+            ]
 
+            # --- Replace text placeholders ---
             for holder in holders:
-                # skip image placeholders here (both 'anh' & 'Anh' forms)
-                if holder.lower().startswith("anh"):
-                    continue
+                key_norm = holder.lower().replace("_","")
+                value = normalized_map.get(key_norm, "")
 
-                # prepare patterns that may appear in docx (match both ${x} and $x)
-                patterns = [
-                    f"${holder}",
-                    f"${{{holder}}}",
-                    f"${holder};",
-                    f"${{{holder}}};"
-                ]
+                # replace 4 dạng
+                ds.replace_text(doc, f"${holder}", value)
+                ds.replace_text(doc, f"${{{holder}}}", value)
+                ds.replace_text(doc, f"${holder};", value)
+                ds.replace_text(doc, f"${{{holder}}};", value)
 
-                normalized = holder.lower().replace("_","")
-                value = ""
-
-                # try direct match to normalized_map
-                if normalized in normalized_map:
-                    value = normalized_map[normalized]
-                else:
-                    # try case-insensitive direct key
-                    for k, v in user_data.items():
-                        if k.lower().replace("_","") == normalized:
-                            value = v
-                            break
-
-                # Try convert dates for many formats (strings too)
-                try:
-                    value_dt = pd.to_datetime(value, dayfirst=True, errors="coerce")
-                    if not pd.isna(value_dt):
-                        value = value_dt.strftime("%d/%m/%Y")
-                except Exception:
-                    pass
-
-                value_str = "" if value is None else str(value)
-
-                # replace all patterns
-                for ph in patterns:
-                    before = docx_bytes
-                    docx_bytes = docx_image.replace_text_bytes(docx_bytes, ph, value_str)
-                    # if change happened, we count it
-                    if docx_bytes != before:
-                        replaced_placeholders.add(holder)
-                        placeholder_value_map[holder] = value_str
-
-            st.write("Replaced text placeholders:", sorted(list(replaced_placeholders)))
-            st.write("Mapping (placeholder -> value) (partial):", placeholder_value_map)
-
-            # 2) INSERT IMAGES
-            inserted_images = []
-            not_inserted_images = []
-            # support lowercase 'anh1' placeholders from template: we attempt variants in both lower and Title forms
-            for i in range(1,9):
+            # --- Insert images ---
+            for i in range(1, 9):
                 key = f"img{i}"
-                # try variants: lowercase, Title-case, with/without braces and trailing semicolon
-                ph_variants = [
-                    f"${{anh{i}}}", f"$anh{i}", f"${{anh{i}}};", f"$anh{i};",
-                    f"${{Anh{i}}}", f"$Anh{i}", f"${{Anh{i}}};", f"$Anh{i};"
-                ]
                 if key in st.session_state.images_bytes:
                     img_bytes = st.session_state.images_bytes[key]
-                    inserted = False
-                    for ph in ph_variants:
-                        before = docx_bytes
-                        docx_bytes = docx_image.insert_image_into_docx_bytes(docx_bytes, ph, img_bytes, width_cm=12)
-                        if docx_bytes != before:
-                            inserted = True
-                            inserted_images.append(ph)
-                    if not inserted:
-                        not_inserted_images.append(key)
 
-            st.write("Inserted images placeholders:", inserted_images)
-            if not_inserted_images:
-                st.warning(f"Không chèn được ảnh cho: {not_inserted_images}. Kiểm tra placeholder trong template (ví dụ ${'{anh1}'} hoặc $anh1).")
+                    # 4 dạng placeholder
+                    for ph in [
+                        f"${{Anh{i}}}",
+                        f"$Anh{i}",
+                        f"${{anh{i}}}",
+                        f"$anh{i}"
+                    ]:
+                        ds.insert_image(doc, ph, img_bytes, 12)
 
-            # 3) final download
+            # Save lại DOCX
+            out_bytes = ds.save_docx(doc)
+
             title = f"BBNT_{ma_tram}_{thang}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
             st.download_button(
                 "📥 Tải DOCX",
-                data=docx_bytes,
+                data=out_bytes,
                 file_name=title + ".docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
