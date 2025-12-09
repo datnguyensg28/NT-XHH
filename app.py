@@ -8,8 +8,8 @@ import io
 import re
 import zipfile
 
-st.set_page_config(page_title="BBNT - Xã Hội Hóa V4", layout="wide")
-st.title("BBNT - Xã Hội Hóa (Web V4)")
+st.set_page_config(page_title="BBNT - Xã Hội Hóa", layout="wide")
+st.title("BBNT - Xã Hội Hóa (Web Version)")
 
 # ---------- load data ----------
 @st.cache_data(ttl=300)
