@@ -4,7 +4,7 @@ import re
 import uuid
 from docx import Document
 from docx.shared import Cm
-
+#verify that the required libraries are installed
 def _merge_xml(xml: str) -> str:
     xml = re.sub(r"</w:t>\s*<w:t[^>]*>", "", xml)
     xml = re.sub(r"</w:t><w:t[^>]*>", "", xml)
