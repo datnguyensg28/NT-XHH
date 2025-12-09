@@ -7,12 +7,12 @@ from PIL import Image
 import io
 import re
 import zipfile
-
+from modules.docx_image import _merge_xml
 # ============================
 # CONFIG
 # ============================
 st.set_page_config(page_title="BBNT - Xã Hội Hóa V3", layout="wide")
-st.title("BBNT - Xã Hội Hóa (Web V3)")
+st.title("BBNT - Xã Hội Hóa (Web V3- update)")
 
 # ============================
 # LOAD GOOGLE SHEETS
@@ -45,18 +45,19 @@ def bytes_from_pil(img: Image.Image):
     img.save(buf, format="JPEG", quality=85)
     return buf.getvalue()
 
-from modules.docx_image import _merge_xml   # thêm import này ở đầu app.py
+
+from modules.docx_image import _merge_xml   # thêm dòng này ở đầu app.py
 
 def extract_placeholders_from_docx(docx_bytes):
     """
-    Tìm placeholder dạng $xxx, ${xxx}, kể cả khi Word split XML.
+    Tìm placeholder dạng $xxx hoặc ${xxx} — kể cả khi Word split run.
     """
     bio = io.BytesIO(docx_bytes)
 
     with zipfile.ZipFile(bio, "r") as z:
         xml = z.read("word/document.xml").decode("utf-8")
 
-    # Dùng merge XML chuẩn từ docx_image.py
+    # hợp nhất text node bằng _merge_xml của bạn
     xml = _merge_xml(xml)
 
     holders = set()
