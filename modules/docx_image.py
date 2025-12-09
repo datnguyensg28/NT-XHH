@@ -36,7 +36,7 @@ def replace_text_bytes(docx_bytes: bytes, placeholder: str, value: str) -> bytes
 
 
 
-ddef insert_image_into_docx_bytes(docx_bytes, placeholder, img_bytes, width_cm=12):
+def insert_image_into_docx_bytes(docx_bytes, placeholder, img_bytes, width_cm=12):
     import io
     from docx import Document
     from docx.shared import Cm

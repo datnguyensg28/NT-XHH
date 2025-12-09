@@ -3,8 +3,8 @@
 # ============================================
 
 import streamlit as st
-#from modules import gsheets, auth, docx_image
-import modules.gsheets as gsheets
+from modules import gsheets, auth, docx_image
+
 import pandas as pd
 from datetime import datetime, date
 from PIL import Image
