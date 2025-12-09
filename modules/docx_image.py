@@ -7,10 +7,15 @@ from docx.shared import Cm
 
 def _merge_xml(xml: str) -> str:
     """
-    Merge các text node bị split trong DOCX:
-    </w:t><w:t>  →  (gộp lại)
+    Ghép toàn bộ <w:t>...</w:t> liên tiếp thành 1 text.
+    Word hay tách placeholder thành nhiều đoạn → phải merge 100%
     """
-    return re.sub(r"</w:t>\s*<w:t[^>]*>", "", xml)
+    # gom toàn bộ text nodes lại
+    xml = re.sub(r"</w:t>\s*<w:t[^>]*>", "", xml)
+    # gom cả trường hợp bị tách bởi r:space="preserve"
+    xml = re.sub(r"</w:t><w:t[^>]*>", "", xml)
+    return xml
+
 
 
 def replace_text_bytes(docx_bytes: bytes, placeholder: str, value: str) -> bytes:

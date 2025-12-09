@@ -12,7 +12,7 @@ import zipfile
 # CONFIG
 # ============================
 st.set_page_config(page_title="BBNT - Xã Hội Hóa V3", layout="wide")
-st.title("BBNT - Xã Hội Hóa (Web V3)")
+st.title("BBNT - Xã Hội Hóa (Web V3.1)")
 
 # ============================
 # LOAD GOOGLE SHEETS
@@ -252,8 +252,14 @@ if st.button("📄 Tạo & Tải biên bản"):
                         break
 
                 # Format ngày tháng
-                if isinstance(value, (pd.Timestamp, datetime)):
-                    value = pd.to_datetime(value).strftime("%d/%m/%Y")
+               
+                # ---- AUTO CONVERT DATE ----
+                try:
+                    # convert mọi chuỗi ngày dạng dd/mm/yyyy, yyyy-mm-dd, etc
+                    value_dt = pd.to_datetime(value, dayfirst=True, errors="raise")
+                    value = value_dt.strftime("%d/%m/%Y")
+                except:
+                    pass  # giữ nguyên nếu không phải ngày
 
                 value_str = "" if value is None else str(value)
 
