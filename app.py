@@ -269,22 +269,21 @@ if st.button("📄 Tạo & Tải biên bản"):
                 st.stop()
 
             # 4) Replace text placeholders
+            # ============================
+            # 4) Replace text placeholders
+            # ============================
+
             for holder in holders:
+
+                # skip ảnh, xử lý phần text trước
                 if holder.lower().startswith("anh"):
-                    # skip ảnh ở bước text replacement
                     continue
 
-                patterns = [
-                    f"${holder}",
-                    f"${{{holder}}}",
-                    f"${holder};",
-                    f"${{{holder}}};"
-                ]
-
-                # lấy giá trị từ dynamic_inputs (nếu user đã nhập) hoặc từ user_data map
+                # --- lấy value (tự động hoặc user nhập) ---
                 value_str = dynamic_inputs.get(holder, "")
+
                 if value_str == "":
-                    # fallback: thử lấy từ user_data bằng cách normalize
+                    # fallback nếu trùng tên cột Google Sheets
                     val = ""
                     for k, v in user_data.items():
                         if k.lower().replace("_", "") == holder.lower().replace("_", ""):
@@ -294,13 +293,22 @@ if st.button("📄 Tạo & Tải biên bản"):
                         val = pd.to_datetime(val).strftime("%d/%m/%Y")
                     value_str = "" if val is None else str(val)
 
-                # cuối cùng replace tất cả dạng pattern
-                for ph in patterns:
-                    docx_bytes = docx_image.replace_text_bytes(
-                        docx_bytes,
-                        ph,
-                        value_str
-                    )
+                # --- tất cả biến thể placeholder cần replace ---
+                placeholder_variants = [
+                    f"${holder}",
+                    f"${holder} ",
+                    f"${{{holder}}}",
+                    f"${{{holder}}} ",
+                    f"${holder};",
+                    f"${holder}; ",
+                    f"${{{holder}}};",
+                    f"${{{holder}}}; ",
+                ]
+
+                # --- replace vào file docx ---
+                for ph in placeholder_variants:
+                    docx_bytes = docx_image.replace_text_bytes(docx_bytes, ph, value_str)
+
 
             # 5) Insert ảnh 1–8
             for i in range(1, 9):
