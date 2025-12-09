@@ -209,7 +209,10 @@ if st.button("📄 Tạo & Tải biên bản"):
         with st.spinner("Đang tạo biên bản..."):
 
             with open("template.docx", "rb") as f:
-                docx_bytes = f.read()
+                raw = f.read()
+
+            # ✅ MERGE XML 1 LẦN DUY NHẤT
+            docx_bytes = docx_image.replace_text_bytes(raw, "", "")
 
             holders = extract_placeholders_from_docx(docx_bytes)
 
