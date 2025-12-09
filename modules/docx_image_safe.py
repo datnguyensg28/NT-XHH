@@ -2,15 +2,8 @@ import io
 from docx import Document
 from docx.shared import Cm
 
-
-# ============================================================
-#   LOAD & SAVE DOCX
-# ============================================================
-
 def load_docx_bytes(docx_bytes: bytes):
-    bio = io.BytesIO(docx_bytes)
-    return Document(bio)
-
+    return Document(io.BytesIO(docx_bytes))
 
 def save_docx(doc: Document) -> bytes:
     bio = io.BytesIO()
@@ -18,87 +11,46 @@ def save_docx(doc: Document) -> bytes:
     return bio.getvalue()
 
 
-# ============================================================
-#   MERGE RUNS (GIỮ NGUYÊN FORMAT)
-# ============================================================
-
-def _runs_have_same_format(r1, r2):
-    """So sánh định dạng 2 run (rPr)."""
-    p1 = r1._element.rPr
-    p2 = r2._element.rPr
-    return (p1.xml if p1 is not None else "") == (p2.xml if p2 is not None else "")
-
-
-def _merge_runs(paragraph):
-    """
-    Gộp các run liên tiếp có chung định dạng.
-    Sau bước này, placeholder luôn nằm trong MỘT run duy nhất.
-    """
+def _replace_in_paragraph(paragraph, placeholder, value):
+    # Lấy toàn bộ text gốc
     runs = paragraph.runs
     if not runs:
-        return []
+        return False
 
-    merged = []
-    buffer_text = runs[0].text
-    buffer_run = runs[0]
+    full_text = "".join(r.text for r in runs)
+    if placeholder not in full_text:
+        return False
 
-    for r in runs[1:]:
-        if _runs_have_same_format(buffer_run, r):
-            buffer_text += r.text
-        else:
-            nr = paragraph.add_run(buffer_text)
-            # copy format
-            if buffer_run._element.rPr is not None:
-                nr._element.rPr = buffer_run._element.rPr
-            merged.append(nr)
+    # tạo text mới sau khi replace
+    new_text = full_text.replace(placeholder, value)
 
-            buffer_run = r
-            buffer_text = r.text
+    # phân bổ text mới vào các run theo chiều dài run cũ
+    original_lens = [len(r.text) for r in runs]
+    pos = 0
 
-    # flush cuối
-    nr = paragraph.add_run(buffer_text)
-    if buffer_run._element.rPr is not None:
-        nr._element.rPr = buffer_run._element.rPr
-    merged.append(nr)
+    for i, r in enumerate(runs):
+        take = original_lens[i]
 
-    # xóa run cũ
-    for old in list(paragraph.runs):
-        old._element.getparent().remove(old._element)
+        # run cuối lấy phần còn lại
+        if i == len(runs) - 1:
+            r.text = new_text[pos:]
+            break
 
-    return merged
+        r.text = new_text[pos:pos + take]
+        pos += take
 
-
-# ============================================================
-#   TEXT REPLACEMENT HOÀN HẢO GIỮ FORMAT
-# ============================================================
-
-def _replace_in_paragraph(paragraph, placeholder, value):
-    """
-    Replace nhưng giữ nguyên toàn bộ định dạng của đoạn chứa placeholder.
-    """
-    runs = _merge_runs(paragraph)
-
-    replaced = False
-    for r in runs:
-        if placeholder in r.text:
-            r.text = r.text.replace(placeholder, value)
-            replaced = True
-
-    return replaced
+    return True
 
 
 def replace_text(doc: Document, placeholder: str, value: str):
-    """
-    Replace trong toàn bộ tài liệu (paragraph + table), GIỮ ĐỊNH DẠNG.
-    """
     replaced = False
 
-    # paragraph
+    # paragraphs
     for p in doc.paragraphs:
         if _replace_in_paragraph(p, placeholder, value):
             replaced = True
 
-    # table
+    # tables
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
@@ -109,28 +61,26 @@ def replace_text(doc: Document, placeholder: str, value: str):
     return replaced
 
 
-# ============================================================
-#   IMAGE INSERTION (KHÔNG MẤT FORMAT)
-# ============================================================
-
 def _insert_img_to_paragraph(paragraph, placeholder, img_bytes, width_cm):
-    runs = _merge_runs(paragraph)
-    found = False
+    runs = paragraph.runs
+    full_text = "".join(r.text for r in runs)
 
+    if placeholder not in full_text:
+        return False
+
+    # clear all runs → chèn ảnh
     for r in runs:
-        if placeholder in r.text:
-            found = True
-            r.text = r.text.replace(placeholder, "")
-            run_img = paragraph.add_run()
-            run_img.add_picture(io.BytesIO(img_bytes), width=Cm(width_cm))
+        r.text = ""
 
-    return found
+    run = paragraph.add_run()
+    run.add_picture(io.BytesIO(img_bytes), width=Cm(width_cm))
+    return True
 
 
 def insert_image(doc: Document, placeholder: str, img_bytes: bytes, width_cm=12):
     inserted = False
 
-    # paragraph
+    # paragraphs
     for p in doc.paragraphs:
         if _insert_img_to_paragraph(p, placeholder, img_bytes, width_cm):
             inserted = True
