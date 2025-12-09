@@ -1,4 +1,4 @@
-#Module app.py
+# app.py
 import streamlit as st
 from modules import gsheets, auth, docx_image
 import pandas as pd
@@ -8,15 +8,10 @@ import io
 import re
 import zipfile
 
-# ============================
-# CONFIG
-# ============================
 st.set_page_config(page_title="BBNT - Xã Hội Hóa V3", layout="wide")
-st.title("BBNT - Xã Hội Hóa (Web V3.1)")
+st.title("BBNT - Xã Hội Hóa (Web V3)")
 
-# ============================
-# LOAD GOOGLE SHEETS
-# ============================
+# ---------- load data ----------
 @st.cache_data(ttl=300)
 def load_data():
     df_csdl, df_taichinh, _ = gsheets.load_dataframes()
@@ -30,86 +25,62 @@ except Exception as e:
 
 ma_tram_list = [str(v).strip().upper() for v in df_csdl["ma_tram"]]
 
-# ============================
-# SESSION INIT
-# ============================
+# session
 st.session_state.setdefault("logged_in", False)
 st.session_state.setdefault("images", {})
 st.session_state.setdefault("images_bytes", {})
 
-# ============================
-# HELPERS
-# ============================
 def bytes_from_pil(img: Image.Image):
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=85)
     return buf.getvalue()
 
-from modules.docx_image import _merge_xml   # thêm import này ở đầu app.py
+# ---------- helpers ----------
+from modules.docx_image import _merge_xml  # vẫn dùng
 
-def extract_placeholders_from_docx(docx_bytes):
+def extract_placeholders_from_docx_bytes(docx_bytes: bytes):
     """
-    Tìm placeholder dạng $xxx, ${xxx}, kể cả khi Word split XML.
+    Trả về set placeholder dạng 'ngaybatdau', 'Anh1', 'tienthangtruocthue', ...
+    tìm cả $xxx và ${xxx}
     """
     bio = io.BytesIO(docx_bytes)
-
     with zipfile.ZipFile(bio, "r") as z:
         xml = z.read("word/document.xml").decode("utf-8")
 
-    # Dùng merge XML chuẩn từ docx_image.py
     xml = _merge_xml(xml)
 
-    holders = set()
-    holders.update(re.findall(r"\$([A-Za-z0-9_]+)", xml))
-    holders.update(re.findall(r"\$\{([A-Za-z0-9_]+)\}", xml))
+    # tìm $xxx và ${xxx}
+    s = set()
+    for m in re.finditer(r"\$\{?\s*([A-Za-z0-9_]+)\s*\}?", xml):
+        s.add(m.group(1))
 
-    return holders
+    return s
 
-
-
-# ============================
-# LOGIN
-# ============================
+# ---------- login ----------
 if not st.session_state.logged_in:
-
     with st.form("login_form"):
         col1, col2 = st.columns(2)
-
         with col1:
             ma_tram = st.text_input("Mã Nhà Trạm").upper().strip()
             list_thang = sorted(df_taichinh["Thang"].astype(str).unique().tolist())
             thang = st.selectbox("Tháng thanh toán", [""] + list_thang)
-
         with col2:
             password = st.text_input("Mật khẩu", type="password")
-
         submit = st.form_submit_button("Đăng nhập")
 
     if submit:
-
         if not ma_tram:
             st.warning("Nhập mã trạm!")
             st.stop()
-
         if ma_tram not in ma_tram_list:
             st.error("Sai mã trạm!")
             st.stop()
-
         idx = ma_tram_list.index(ma_tram)
         stored_pw = str(df_csdl["Password"].iloc[idx])
-
-        # Hỗ trợ SHA-256 hoặc plain
-        ok = (
-            auth.verify_password(password, stored_pw)
-            if len(stored_pw) == 64
-            else stored_pw == password
-        )
-
+        ok = (auth.verify_password(password, stored_pw) if len(stored_pw) == 64 else stored_pw == password)
         if not ok:
             st.error("Sai mật khẩu.")
             st.stop()
-
-        # login OK
         st.session_state.logged_in = True
         st.session_state.ma_tram = ma_tram
         st.session_state.thang = thang
@@ -117,16 +88,11 @@ if not st.session_state.logged_in:
         st.session_state.images_bytes = {}
         st.rerun()
 
-
-# ============================
-# AFTER LOGIN
-# ============================
 if not st.session_state.logged_in:
     st.stop()
 
 ma_tram = st.session_state.ma_tram
 thang = st.session_state.thang
-
 idx = ma_tram_list.index(ma_tram)
 csdl_dict = df_csdl.iloc[idx].to_dict()
 
@@ -144,27 +110,18 @@ user_data = csdl_dict.copy()
 user_data.update(match.iloc[0].to_dict())
 user_data["Thang"] = thang
 
-# AUTO fields
+# auto fields
 loai_cot = str(user_data.get("Loai_cot", "")).strip().lower()
-
 user_data["Danh_gia_cot"] = "Đạt" if loai_cot == "cột dây co" else "Không đánh giá"
-user_data["Danh_gia_PM"] = (
-    "Đạt" if str(user_data.get("Phong_may","")) != "Không thuê" else "Không đánh giá"
-)
-user_data["Danh_gia_DH"] = (
-    "Đạt" if str(user_data.get("Dieu_hoa","")) != "Không thuê" else "Không đánh giá"
-)
+user_data["Danh_gia_PM"] = "Đạt" if str(user_data.get("Phong_may","")) != "Không thuê" else "Không đánh giá"
+user_data["Danh_gia_DH"] = "Đạt" if str(user_data.get("Dieu_hoa","")) != "Không thuê" else "Không đánh giá"
 
 st.subheader("Thông tin trạm")
 st.write(pd.Series(user_data))
 st.markdown("---")
 
-
-# ============================
-# UPLOAD + ROTATE
-# ============================
+# upload & rotate
 st.subheader("📸 Upload & Xoay ảnh (1–8)")
-
 labels = [
     "Anh1 – Toàn cảnh cột anten",
     "Anh2 – Móng M0",
@@ -187,54 +144,49 @@ def do_rotate(idx, angle):
 for i, label in enumerate(labels, start=1):
     key = f"img{i}"
     st.markdown(f"### {label}")
-
     file = st.file_uploader(label, type=["jpg","jpeg","png"], key=f"u{i}")
-
     if file and key not in st.session_state.images:
         img = Image.open(file).convert("RGB")
         img.thumbnail((1600,1600))
         st.session_state.images[key] = img
         st.session_state.images_bytes[key] = bytes_from_pil(img)
-
     if key in st.session_state.images:
         col1, col2, col3 = st.columns([4,1,1])
-
         with col1:
             st.image(st.session_state.images[key], width=450)
-
         with col2:
             st.button("⟲", key=f"L{i}", on_click=do_rotate, args=(i, 90))
-
         with col3:
             st.button("⟳", key=f"R{i}", on_click=do_rotate, args=(i, -90))
-
     st.markdown("---")
 
-
-# ============================
-# ============================
-# ============================
-# CREATE REPORT (NEW & FIXED)
-# ============================
-# CREATE REPORT (NEW & FIXED)
-# ============================
+# ---------- CREATE REPORT ----------
 if st.button("📄 Tạo & Tải biên bản"):
-
     try:
         with st.spinner("Đang tạo biên bản..."):
-
-            # 1) Load template
+            # load template
             with open("template.docx", "rb") as f:
                 docx_bytes = f.read()
 
-            # 2) Load placeholders (đã fix split-XML)
-            holders = extract_placeholders_from_docx(docx_bytes)
+            # list placeholders in template (debug)
+            holders = extract_placeholders_from_docx_bytes(docx_bytes)
+            st.info(f"Placeholders found in template: {sorted(list(holders))}")
 
-            # 3) Replace text placeholders
+            # 1) REPLACE TEXT placeholders
+            # chuẩn hoá user_data keys để map dễ hơn
+            normalized_map = {}
+            for k, v in user_data.items():
+                normalized_map[k.lower().replace("_","")] = v
+
+            replaced_placeholders = set()
+            placeholder_value_map = {}
+
             for holder in holders:
-                # ❗ BỎ QUA placeholder ẢNH để không bị xóa trước khi chèn ảnh
+                # skip image placeholders here
                 if holder.lower().startswith("anh"):
                     continue
+
+                # prepare patterns that may appear in docx
                 patterns = [
                     f"${holder}",
                     f"${{{holder}}}",
@@ -242,61 +194,65 @@ if st.button("📄 Tạo & Tải biên bản"):
                     f"${{{holder}}};"
                 ]
 
-                normalized = holder.lower().replace("_", "")
+                normalized = holder.lower().replace("_","")
                 value = ""
 
-                # Map trực tiếp theo tên cột
-                for k, v in user_data.items():
-                    if k.lower().replace("_", "") == normalized:
-                        value = v
-                        break
+                # try direct match to normalized_map
+                if normalized in normalized_map:
+                    value = normalized_map[normalized]
+                else:
+                    # try case-insensitive direct key
+                    for k, v in user_data.items():
+                        if k.lower().replace("_","") == normalized:
+                            value = v
+                            break
 
-                # Format ngày tháng
-               
-                # ---- AUTO CONVERT DATE ----
+                # Try convert dates for many formats (strings too)
                 try:
-                    # convert mọi chuỗi ngày dạng dd/mm/yyyy, yyyy-mm-dd, etc
-                    value_dt = pd.to_datetime(value, dayfirst=True, errors="raise")
-                    value = value_dt.strftime("%d/%m/%Y")
-                except:
-                    pass  # giữ nguyên nếu không phải ngày
+                    value_dt = pd.to_datetime(value, dayfirst=True, errors="coerce")
+                    if not pd.isna(value_dt):
+                        value = value_dt.strftime("%d/%m/%Y")
+                except Exception:
+                    pass
 
                 value_str = "" if value is None else str(value)
 
+                # replace all patterns
                 for ph in patterns:
-                    docx_bytes = docx_image.replace_text_bytes(
-                        docx_bytes,
-                        ph,
-                        value_str
-                    )
+                    before = docx_bytes
+                    docx_bytes = docx_image.replace_text_bytes(docx_bytes, ph, value_str)
+                    # if change happened, we count it
+                    if docx_bytes != before:
+                        replaced_placeholders.add(holder)
+                        placeholder_value_map[holder] = value_str
 
-            # 4) Insert ảnh 1–8
-            for i in range(1, 9):
+            st.write("Replaced text placeholders:", sorted(list(replaced_placeholders)))
+            st.write("Mapping (placeholder -> value) (partial):", placeholder_value_map)
+
+            # 2) INSERT IMAGES
+            inserted_images = []
+            not_inserted_images = []
+            for i in range(1,9):
                 key = f"img{i}"
-
+                ph_variants = [f"${{Anh{i}}}", f"$Anh{i}", f"${{Anh{i}}};", f"$Anh{i};"]
                 if key in st.session_state.images_bytes:
                     img_bytes = st.session_state.images_bytes[key]
+                    inserted = False
+                    for ph in ph_variants:
+                        before = docx_bytes
+                        docx_bytes = docx_image.insert_image_into_docx_bytes(docx_bytes, ph, img_bytes, width_cm=12)
+                        if docx_bytes != before:
+                            inserted = True
+                            inserted_images.append(ph)
+                    if not inserted:
+                        not_inserted_images.append(key)
 
-                    # hỗ trợ mọi dạng placeholder ảnh
-                    ph_list = [
-                        f"${{Anh{i}}}",
-                        f"$Anh{i}",
-                        f"${{Anh{i}}};",
-                        f"$Anh{i};",
-                    ]
+            st.write("Inserted images placeholders:", inserted_images)
+            if not_inserted_images:
+                st.warning(f"Không chèn được ảnh cho: {not_inserted_images}. Kiểm tra placeholder trong template (ví dụ ${'{Anh1}'} hoặc $Anh1).")
 
-                    for ph in ph_list:
-                        docx_bytes = docx_image.insert_image_into_docx_bytes(
-                            docx_bytes,
-                            ph,
-                            img_bytes,
-                            width_cm=12
-                        )
-
-
-            # 5) Xuất file
+            # 3) final download
             title = f"BBNT_{ma_tram}_{thang}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-
             st.download_button(
                 "📥 Tải DOCX",
                 data=docx_bytes,
@@ -308,7 +264,3 @@ if st.button("📄 Tạo & Tải biên bản"):
         import traceback
         st.error(f"Lỗi tạo biên bản: {e}")
         st.text(traceback.format_exc())
-
-
-
-
