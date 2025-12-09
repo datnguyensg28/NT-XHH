@@ -11,7 +11,7 @@ import zipfile
 # ============================
 # CONFIG
 # ============================
-st.set_page_config(page_title="BBNT - Xã Hội Hóa", layout="wide")
+st.set_page_config(page_title="BBNT - Xã Hội Hóa V3", layout="wide")
 st.title("BBNT - Xã Hội Hóa (Web)")
 
 # ============================
