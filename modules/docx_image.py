@@ -55,4 +55,12 @@ def insert_image_into_docx_bytes(docx_bytes: bytes, placeholder: str, img_bytes:
     bio = io.BytesIO(docx_bytes)
     doc = Document(bio)
 
-    for p i
+    for p in doc.paragraphs:
+        if placeholder in p.text:
+            p.clear()
+            run = p.add_run()
+            run.add_picture(io.BytesIO(img_bytes), width=Cm(width_cm))
+
+    out = io.BytesIO()
+    doc.save(out)
+    return out.getvalue()
