@@ -94,3 +94,63 @@ def insert_image(doc: Document, placeholder: str, img_bytes: bytes, width_cm=12)
                         inserted = True
 
     return inserted
+
+
+def _clear_cell(cell):
+    for p in cell.paragraphs:
+        for r in p.runs:
+            r.text = ""
+
+
+def _add_image_to_cell(cell, img_bytes: bytes, width_cm=12):
+    _clear_cell(cell)
+    paragraph = cell.paragraphs[0] if cell.paragraphs else cell.add_paragraph()
+    run = paragraph.add_run()
+    run.add_picture(io.BytesIO(img_bytes), width=Cm(width_cm))
+
+
+def insert_image_in_final_table(doc: Document, image_no: int, title: str, img_bytes: bytes, width_cm=12):
+    """
+    Chen anh vao bang hinh anh cuoi file. Neu template chua co dong anh tuong ung,
+    tu dong them dong moi de tranh mat anh khi tao bien ban.
+    """
+    image_table = None
+    for table in reversed(doc.tables):
+        if not table.rows or len(table.columns) < 2:
+            continue
+        first_row = [cell.text.strip().lower() for cell in table.rows[0].cells[:2]]
+        if "hình" in first_row[1] or "hinh" in first_row[1]:
+            image_table = table
+            break
+
+    if image_table is None:
+        image_table = doc.add_table(rows=1, cols=2)
+        image_table.rows[0].cells[0].text = "TÊN HẠNG MỤC"
+        image_table.rows[0].cells[1].text = "HÌNH ẢNH"
+
+    needle_texts = {
+        str(image_no),
+        f"anh{image_no}",
+        f"anh {image_no}",
+        f"ảnh{image_no}",
+        f"ảnh {image_no}",
+        f"${{anh{image_no}}}",
+        f"$anh{image_no}",
+    }
+    title_norm = title.strip().lower()
+
+    target_row = None
+    for row in image_table.rows[1:]:
+        cells = row.cells
+        row_title = cells[0].text.strip().lower()
+        row_image = cells[1].text.strip().lower()
+        if row_title == title_norm or any(needle in row_image for needle in needle_texts):
+            target_row = row
+            break
+
+    if target_row is None:
+        target_row = image_table.add_row()
+        target_row.cells[0].text = title
+
+    _add_image_to_cell(target_row.cells[1], img_bytes, width_cm)
+    return True

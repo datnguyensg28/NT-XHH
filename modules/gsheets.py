@@ -3,16 +3,25 @@ import pandas as pd
 import streamlit as st
 from google.oauth2 import service_account
 
-# Load từ block secrets
-gcp = st.secrets["gcp_service_account"]
-
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
     "https://www.googleapis.com/auth/documents",
 ]
 
+
+def get_gcp_config():
+    try:
+        return st.secrets["gcp_service_account"]
+    except Exception as exc:
+        raise RuntimeError(
+            "Thiếu cấu hình Google Sheets. Hãy tạo file .streamlit/secrets.toml "
+            "với block [gcp_service_account] và SPREADSHEET_URL."
+        ) from exc
+
+
 def get_creds_from_secrets():
+    gcp = get_gcp_config()
     creds = service_account.Credentials.from_service_account_info(
         gcp,
         scopes=SCOPES
@@ -20,6 +29,7 @@ def get_creds_from_secrets():
     return creds
 
 def open_spreadsheet():
+    gcp = get_gcp_config()
     spreadsheet_url = gcp["SPREADSHEET_URL"]
     creds = get_creds_from_secrets()
     client = gspread.authorize(creds)
