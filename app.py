@@ -28,6 +28,51 @@ st.markdown(
     }
     .app-title { color: #17202a; font-size: 2rem; font-weight: 780; margin-bottom: .2rem; }
     .app-subtitle { color: #5f6368; margin-bottom: 0; max-width: 780px; }
+    .quick-steps {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: .75rem;
+        margin: .5rem 0 1rem 0;
+    }
+    .quick-step {
+        background: #ffffff;
+        border: 1px solid #e4e8ee;
+        border-radius: 8px;
+        padding: .85rem 1rem;
+    }
+    .quick-step strong { color: #17202a; display: block; margin-bottom: .15rem; }
+    .quick-step span { color: #667085; font-size: .9rem; }
+    .friendly-panel {
+        background: #ffffff;
+        border: 1px solid #e4e8ee;
+        border-radius: 8px;
+        padding: 1rem 1.15rem;
+        margin-bottom: .85rem;
+    }
+    .friendly-title { font-weight: 750; color: #17202a; font-size: 1.08rem; margin-bottom: .2rem; }
+    .friendly-muted { color: #667085; font-size: .92rem; line-height: 1.45; }
+    .required-badge {
+        display: inline-block;
+        color: #b42318;
+        background: #fff1f0;
+        border: 1px solid #ffccc7;
+        border-radius: 999px;
+        padding: .1rem .5rem;
+        font-size: .78rem;
+        font-weight: 700;
+        margin-left: .35rem;
+    }
+    .done-badge {
+        display: inline-block;
+        color: #067647;
+        background: #ecfdf3;
+        border: 1px solid #abefc6;
+        border-radius: 999px;
+        padding: .1rem .5rem;
+        font-size: .78rem;
+        font-weight: 700;
+        margin-left: .35rem;
+    }
     .setup-card {
         background: #ffffff;
         border: 1px solid #e1e6ef;
@@ -59,6 +104,10 @@ st.markdown(
         border-radius: 8px;
         padding: .35rem .75rem;
     }
+    @media (max-width: 760px) {
+        .quick-steps { grid-template-columns: 1fr; }
+        .app-title { font-size: 1.55rem; }
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -67,7 +116,7 @@ st.markdown(
     """
     <div class="app-shell">
         <div class="app-title">BBNT - Xã Hội Hóa</div>
-        <div class="app-subtitle">Tạo biên bản nghiệm thu, chọn ảnh theo đúng loại trạm và định dạng dữ liệu Việt Nam.</div>
+        <div class="app-subtitle">Cảm ơn quý vị đã phối hợp và hỗ trợ Viettel trong suốt thời gian qua</div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -223,7 +272,7 @@ def bytes_from_pil(img: Image.Image):
     return buf.getvalue()
 
 
-DATE_FIELDS = {"ngaybatdau", "ngayketthuc", "ngayky"}
+DATE_FIELDS = {"ngaybatdau", "ngayketthuc", "ngayky", "tungay", "denngay"}
 MONEY_FIELDS = {
     "tienthangtruocthue",
     "tienthueky",
@@ -315,19 +364,30 @@ def extract_placeholders_from_docx_bytes(docx_bytes: bytes):
 
 # ---------- login ----------
 if not st.session_state.logged_in:
-    with st.form("login_form"):
-        col1, col2 = st.columns(2)
-        with col1:
-            ma_tram = st.text_input("Mã Nhà Trạm").upper().strip()
+    left, center, right = st.columns([1, 1.35, 1])
+    with center:
+        st.markdown(
+            """
+            <div class="friendly-panel">
+                <div class="friendly-title">Đăng nhập thông tin trạm</div>
+                <div class="friendly-muted">Chọn tháng thanh toán, nhập mã trạm và mật khẩu để bắt đầu tạo biên bản.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        with st.form("login_form"):
+            ma_tram = st.text_input("Mã nhà trạm", placeholder="Ví dụ: AGG001").upper().strip()
             list_thang = sorted(df_taichinh["Thang"].astype(str).unique().tolist())
             thang = st.selectbox("Tháng thanh toán", [""] + list_thang)
-        with col2:
-            password = st.text_input("Mật khẩu", type="password")
-        submit = st.form_submit_button("Đăng nhập")
+            password = st.text_input("Mật khẩu", type="password", placeholder="Nhập mật khẩu")
+            submit = st.form_submit_button("Đăng nhập", use_container_width=True)
 
     if submit:
         if not ma_tram:
             st.warning("Nhập mã trạm!")
+            st.stop()
+        if not thang:
+            st.warning("Chọn tháng thanh toán!")
             st.stop()
         if ma_tram not in ma_tram_list:
             st.error("Sai mã trạm!")
@@ -387,7 +447,7 @@ with overview_tab:
         "Ma_HD", "Dia_chi", "Ten_don_vi_XHH", "Chu_ha_tang", "Chuc_vu",
         "Loai_cot", "Loai_tram", "Phong_may", "Dieu_hoa",
         "Ky_thanh_toan", "tienthangtruocthue", "tientruocthueky",
-        "tienthueky", "tongtienky", "ngaybatdau", "ngayketthuc", "ngay_ky",
+        "tienthueky", "tongtienky", "tu_ngay", "den_ngay", "ngaybatdau", "ngayketthuc", "ngay_ky",
     ]
     rows = []
     for field in display_fields:
@@ -443,7 +503,7 @@ def get_required_image_rules(data):
 
 def image_rule_status(rule, data):
     if not rule["conditions"]:
-        return "Bắt buộc", "Tất cả các loại"
+        return "Bắt buộc *", "Tất cả các loại"
 
     descriptions = {
         "guyed_tower": "Nếu là loại cột dây co",
@@ -451,7 +511,7 @@ def image_rule_status(rule, data):
         "aircon": "Nếu có thuê điều hòa",
     }
     required_rules = get_required_image_rules(data)
-    status = "Bắt buộc" if rule in required_rules else "Không áp dụng"
+    status = "Bắt buộc *" if rule in required_rules else "Không áp dụng"
     reason = ", ".join(descriptions.get(cond, cond) for cond in rule["conditions"])
     return status, reason
 
@@ -465,6 +525,37 @@ def save_uploaded_image(slot_no, uploaded_file):
 
 
 required_image_rules = get_required_image_rules(user_data)
+uploaded_required_count = sum(
+    1 for rule in required_image_rules
+    if f"img{rule['no']}" in st.session_state.images_bytes
+)
+
+with st.sidebar:
+    st.markdown("---")
+    st.markdown("### Phiên làm việc")
+    st.caption(f"Mã trạm: **{ma_tram}**")
+    st.caption(f"Tháng: **{thang}**")
+    st.progress(
+        uploaded_required_count / len(required_image_rules)
+        if required_image_rules else 1.0
+    )
+    st.caption(f"Ảnh bắt buộc: {uploaded_required_count}/{len(required_image_rules)}")
+    if st.button("Đăng xuất", use_container_width=True):
+        st.session_state.logged_in = False
+        st.session_state.images = {}
+        st.session_state.images_bytes = {}
+        st.rerun()
+
+st.markdown(
+    """
+    <div class="quick-steps">
+        <div class="quick-step"><strong>1. Kiểm tra thông tin</strong><span>Xem nhanh dữ liệu trạm và giá trị thanh toán.</span></div>
+        <div class="quick-step"><strong>2. Chọn ảnh bắt buộc</strong><span>Chỉ upload các ảnh đang áp dụng cho trạm này.</span></div>
+        <div class="quick-step"><strong>3. Tải biên bản</strong><span>Tạo DOCX sau khi đủ ảnh và dữ liệu.</span></div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 def do_rotate(idx, angle):
     key = f"img{idx}"
@@ -503,8 +594,15 @@ if hasattr(st, "dialog"):
 
 
 with image_tab:
-    st.subheader(f"Hình ảnh nghiệm thu ({len(required_image_rules)} ảnh cần upload)")
-    st.caption("Ứng dụng chỉ yêu cầu các ảnh phù hợp với thông tin trạm hiện tại.")
+    st.subheader("Hình ảnh nghiệm thu")
+    st.caption("Chọn các ảnh bắt buộc đang áp dụng cho trạm này. Ảnh không áp dụng sẽ không cần upload.")
+
+    progress_value = (
+        uploaded_required_count / len(required_image_rules)
+        if required_image_rules else 1.0
+    )
+    st.progress(progress_value)
+    st.caption(f"Đã chọn {uploaded_required_count}/{len(required_image_rules)} ảnh bắt buộc.")
 
     rule_rows = []
     for rule in IMAGE_RULES:
@@ -515,35 +613,41 @@ with image_tab:
             "Trạng thái": status,
             "Rule": reason,
         })
-    st.dataframe(pd.DataFrame(rule_rows), use_container_width=True, hide_index=True)
-    st.markdown("---")
+    with st.expander("Xem bảng rule ảnh", expanded=False):
+        st.dataframe(pd.DataFrame(rule_rows), use_container_width=True, hide_index=True)
 
     for rule in required_image_rules:
         i = rule["no"]
         key = f"img{i}"
-        st.markdown(f"### Ảnh {i} - {rule['title']}")
-        if key in st.session_state.images:
-            col1, col2, col3, col4 = st.columns([4, 1, 1, 1])
-            with col1:
-                st.image(st.session_state.images[key], width=450)
-            with col2:
-                st.button("⟲", key=f"L{i}", on_click=do_rotate, args=(i, 90))
-            with col3:
-                st.button("⟳", key=f"R{i}", on_click=do_rotate, args=(i, -90))
-            with col4:
+        has_image = key in st.session_state.images
+        status_text = "Đã chọn" if has_image else "Chưa chọn"
+        label = f"{'✓' if has_image else '•'} Ảnh {i} - {rule['title']} * (bắt buộc) - {status_text}"
+        with st.expander(label, expanded=not has_image):
+            if has_image:
+                col1, col2, col3, col4 = st.columns([4, 1, 1, 1])
+                with col1:
+                    st.image(st.session_state.images[key], width=450)
+                with col2:
+                    st.button("⟲", key=f"L{i}", on_click=do_rotate, args=(i, 90), use_container_width=True)
+                with col3:
+                    st.button("⟳", key=f"R{i}", on_click=do_rotate, args=(i, -90), use_container_width=True)
+                with col4:
+                    if hasattr(st, "dialog"):
+                        if st.button("Thay thế", key=f"open{i}", use_container_width=True):
+                            image_dialog(rule)
+                    else:
+                        with st.expander("Thay thế ảnh"):
+                            render_image_picker(rule)
+            else:
+                st.markdown(
+                    '<span class="required-badge">Bắt buộc</span>',
+                    unsafe_allow_html=True,
+                )
                 if hasattr(st, "dialog"):
-                    if st.button("Thay thế", key=f"open{i}"):
+                    if st.button("Chọn ảnh", key=f"open{i}", use_container_width=True):
                         image_dialog(rule)
                 else:
-                    with st.expander("Thay thế ảnh"):
-                        render_image_picker(rule)
-        else:
-            if hasattr(st, "dialog"):
-                if st.button("Chọn ảnh", key=f"open{i}"):
-                    image_dialog(rule)
-            else:
-                render_image_picker(rule)
-        st.markdown("---")
+                    render_image_picker(rule)
 
 # ---------- CREATE REPORT ----------
 # ---------- CREATE REPORT ----------
@@ -552,13 +656,20 @@ from modules import docx_image_safe as ds
 
 with report_tab:
     st.subheader("Tạo biên bản")
-    st.caption("Dữ liệu ngày, tháng và tiền được tự chuẩn hóa theo định dạng Việt Nam trước khi chèn vào file Word.")
-    st.info(f"Cần {len(required_image_rules)} ảnh cho trạm này. Các ảnh không áp dụng sẽ không bị yêu cầu upload.")
+    st.caption("Kiểm tra nhanh trước khi xuất file Word.")
+    col_ready_1, col_ready_2, col_ready_3 = st.columns(3)
+    col_ready_1.metric("Mã trạm", ma_tram)
+    col_ready_2.metric("Tháng", thang)
+    col_ready_3.metric("Ảnh bắt buộc", f"{uploaded_required_count}/{len(required_image_rules)}")
+    if uploaded_required_count == len(required_image_rules):
+        st.success("Đã đủ ảnh bắt buộc. Có thể tạo biên bản.")
+    else:
+        st.warning("Chưa đủ ảnh bắt buộc. Vui lòng hoàn tất ở tab Hình ảnh nghiệm thu.")
 
 if report_tab.button("📄 Tạo & Tải biên bản", use_container_width=True):
     try:
         missing_images = [
-            f"Ảnh {rule['no']} - {rule['title']}"
+            f"Ảnh {rule['no']} - {rule['title']} * (bắt buộc)"
             for rule in required_image_rules
             if f"img{rule['no']}" not in st.session_state.images_bytes
         ]
@@ -582,11 +693,14 @@ if report_tab.button("📄 Tạo & Tải biên bản", use_container_width=True)
                 key = normalize_key(k)
                 normalized_map[key] = format_value_for_field(k, v)
 
+            normalized_map["tungay"] = normalized_map.get("ngaybatdau", "")
+            normalized_map["denngay"] = normalized_map.get("ngayketthuc", "")
+
 
             # Danh sách placeholders trong template:
             holders = [
                 # text placeholders
-                "ngaybatdau", "ngayketthuc", "ngay_ky",
+                "ngaybatdau", "ngayketthuc", "ngay_ky", "tu_ngay", "den_ngay",
                 "Chu_ha_tang", "Chuc_vu",
                 "Danh_gia_DH","Danh_gia_PM","Danh_gia_cot",
                 "Dia_chi","Ky_thanh_toan",
