@@ -265,6 +265,7 @@ with st.sidebar:
 st.session_state.setdefault("logged_in", False)
 st.session_state.setdefault("images", {})
 st.session_state.setdefault("images_bytes", {})
+st.session_state.setdefault("image_upload_mode", "Upload ảnh ngay")
 
 def bytes_from_pil(img: Image.Image):
     buf = io.BytesIO()
@@ -544,14 +545,15 @@ with st.sidebar:
         st.session_state.logged_in = False
         st.session_state.images = {}
         st.session_state.images_bytes = {}
+        st.session_state.image_upload_mode = "Upload ảnh ngay"
         st.rerun()
 
 st.markdown(
     """
     <div class="quick-steps">
         <div class="quick-step"><strong>1. Kiểm tra thông tin</strong><span>Xem nhanh dữ liệu trạm và giá trị thanh toán.</span></div>
-        <div class="quick-step"><strong>2. Chọn ảnh bắt buộc</strong><span>Chỉ upload các ảnh đang áp dụng cho trạm này.</span></div>
-        <div class="quick-step"><strong>3. Tải biên bản</strong><span>Tạo DOCX sau khi đủ ảnh và dữ liệu.</span></div>
+        <div class="quick-step"><strong>2. Chọn ảnh</strong><span>Upload ngay hoặc để bổ sung ảnh sau.</span></div>
+        <div class="quick-step"><strong>3. Tải biên bản</strong><span>Tạo DOCX theo lựa chọn ảnh của bạn.</span></div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -595,7 +597,15 @@ if hasattr(st, "dialog"):
 
 with image_tab:
     st.subheader("Hình ảnh nghiệm thu")
-    st.caption("Chọn các ảnh bắt buộc đang áp dụng cho trạm này. Ảnh không áp dụng sẽ không cần upload.")
+    st.caption("Bạn có thể upload ảnh ngay hoặc tạo biên bản trước rồi bổ sung ảnh sau.")
+
+    upload_mode = st.radio(
+        "Cách xử lý hình ảnh",
+        ["Upload ảnh ngay", "Để upload sau"],
+        horizontal=True,
+        key="image_upload_mode",
+    )
+    upload_later = upload_mode == "Để upload sau"
 
     progress_value = (
         uploaded_required_count / len(required_image_rules)
@@ -603,6 +613,8 @@ with image_tab:
     )
     st.progress(progress_value)
     st.caption(f"Đã chọn {uploaded_required_count}/{len(required_image_rules)} ảnh bắt buộc.")
+    if upload_later:
+        st.info("Bạn đang chọn tạo biên bản trước. Ảnh chưa upload sẽ không chặn quá trình tạo file.")
 
     rule_rows = []
     for rule in IMAGE_RULES:
@@ -616,38 +628,48 @@ with image_tab:
     with st.expander("Xem bảng rule ảnh", expanded=False):
         st.dataframe(pd.DataFrame(rule_rows), use_container_width=True, hide_index=True)
 
-    for rule in required_image_rules:
-        i = rule["no"]
-        key = f"img{i}"
-        has_image = key in st.session_state.images
-        status_text = "Đã chọn" if has_image else "Chưa chọn"
-        label = f"{'✓' if has_image else '•'} Ảnh {i} - {rule['title']} * (bắt buộc) - {status_text}"
-        with st.expander(label, expanded=not has_image):
-            if has_image:
-                col1, col2, col3, col4 = st.columns([4, 1, 1, 1])
-                with col1:
-                    st.image(st.session_state.images[key], width=450)
-                with col2:
-                    st.button("⟲", key=f"L{i}", on_click=do_rotate, args=(i, 90), use_container_width=True)
-                with col3:
-                    st.button("⟳", key=f"R{i}", on_click=do_rotate, args=(i, -90), use_container_width=True)
-                with col4:
+    if upload_later:
+        missing_titles = [
+            f"Ảnh {rule['no']} - {rule['title']}"
+            for rule in required_image_rules
+            if f"img{rule['no']}" not in st.session_state.images_bytes
+        ]
+        if missing_titles:
+            with st.expander("Danh sách ảnh sẽ bổ sung sau", expanded=True):
+                st.write(missing_titles)
+    else:
+        for rule in required_image_rules:
+            i = rule["no"]
+            key = f"img{i}"
+            has_image = key in st.session_state.images
+            status_text = "Đã chọn" if has_image else "Chưa chọn"
+            label = f"{'✓' if has_image else '•'} Ảnh {i} - {rule['title']} * (bắt buộc) - {status_text}"
+            with st.expander(label, expanded=not has_image):
+                if has_image:
+                    col1, col2, col3, col4 = st.columns([4, 1, 1, 1])
+                    with col1:
+                        st.image(st.session_state.images[key], width=450)
+                    with col2:
+                        st.button("⟲", key=f"L{i}", on_click=do_rotate, args=(i, 90), use_container_width=True)
+                    with col3:
+                        st.button("⟳", key=f"R{i}", on_click=do_rotate, args=(i, -90), use_container_width=True)
+                    with col4:
+                        if hasattr(st, "dialog"):
+                            if st.button("Thay thế", key=f"open{i}", use_container_width=True):
+                                image_dialog(rule)
+                        else:
+                            with st.expander("Thay thế ảnh"):
+                                render_image_picker(rule)
+                else:
+                    st.markdown(
+                        '<span class="required-badge">Bắt buộc</span>',
+                        unsafe_allow_html=True,
+                    )
                     if hasattr(st, "dialog"):
-                        if st.button("Thay thế", key=f"open{i}", use_container_width=True):
+                        if st.button("Chọn ảnh", key=f"open{i}", use_container_width=True):
                             image_dialog(rule)
                     else:
-                        with st.expander("Thay thế ảnh"):
-                            render_image_picker(rule)
-            else:
-                st.markdown(
-                    '<span class="required-badge">Bắt buộc</span>',
-                    unsafe_allow_html=True,
-                )
-                if hasattr(st, "dialog"):
-                    if st.button("Chọn ảnh", key=f"open{i}", use_container_width=True):
-                        image_dialog(rule)
-                else:
-                    render_image_picker(rule)
+                        render_image_picker(rule)
 
 # ---------- CREATE REPORT ----------
 # ---------- CREATE REPORT ----------
@@ -661,8 +683,11 @@ with report_tab:
     col_ready_1.metric("Mã trạm", ma_tram)
     col_ready_2.metric("Tháng", thang)
     col_ready_3.metric("Ảnh bắt buộc", f"{uploaded_required_count}/{len(required_image_rules)}")
+    upload_later = st.session_state.get("image_upload_mode") == "Để upload sau"
     if uploaded_required_count == len(required_image_rules):
         st.success("Đã đủ ảnh bắt buộc. Có thể tạo biên bản.")
+    elif upload_later:
+        st.info("Bạn đã chọn upload ảnh sau. Có thể tạo biên bản trước.")
     else:
         st.warning("Chưa đủ ảnh bắt buộc. Vui lòng hoàn tất ở tab Hình ảnh nghiệm thu.")
 
@@ -673,10 +698,14 @@ if report_tab.button("📄 Tạo & Tải biên bản", use_container_width=True)
             for rule in required_image_rules
             if f"img{rule['no']}" not in st.session_state.images_bytes
         ]
-        if missing_images:
+        upload_later = st.session_state.get("image_upload_mode") == "Để upload sau"
+        if missing_images and not upload_later:
             st.error("Vui lòng chọn đủ ảnh trước khi tạo biên bản:")
             st.write(missing_images)
             st.stop()
+        if missing_images and upload_later:
+            st.warning("Biên bản sẽ được tạo trước, các ảnh sau đây cần bổ sung sau:")
+            st.write(missing_images)
 
         with st.spinner("Đang tạo biên bản..."):
 
@@ -726,6 +755,8 @@ if report_tab.button("📄 Tạo & Tải biên bản", use_container_width=True)
             for rule in required_image_rules:
                 i = rule["no"]
                 key = f"img{i}"
+                if key not in st.session_state.images_bytes:
+                    continue
                 img_bytes = st.session_state.images_bytes[key]
 
                 inserted = False
