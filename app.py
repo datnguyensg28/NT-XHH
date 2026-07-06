@@ -722,10 +722,6 @@ if report_tab.button("📄 Tạo & Tải biên bản", use_container_width=True)
                 key = normalize_key(k)
                 normalized_map[key] = format_value_for_field(k, v)
 
-            normalized_map["tungay"] = normalized_map.get("ngaybatdau", "")
-            normalized_map["denngay"] = normalized_map.get("ngayketthuc", "")
-
-
             # Danh sách placeholders trong template:
             holders = [
                 # text placeholders
